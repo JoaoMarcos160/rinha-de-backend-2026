@@ -1,1 +1,1 @@
-# rinha-de-backend-2026
+# Rinha-de-backend-2026
