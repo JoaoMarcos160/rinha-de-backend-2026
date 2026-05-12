@@ -6,7 +6,7 @@ const file = Bun.file("references.json");
 const data: { vector: number[]; label: string }[] = await file.json();
 const total = data.length;
 
-// --- Vetores e labels ---
+// --- Vetores (Float32 interno para VP-Tree) e labels ---
 const vectorBuffer = new Float32Array(total * DIMS);
 const labelBuffer = new Uint8Array(total);
 
@@ -15,9 +15,16 @@ for (let i = 0; i < total; i++) {
   labelBuffer[i] = data[i]!.label === "legit" ? 0 : 1;
 }
 
-await write("vectors.bin", Buffer.from(vectorBuffer.buffer));
+// Quantizar Float32 → Int8: range [-1,1] → [-127,127]
+// Reduz vectors.bin de 160 MB para 42 MB (3M vetores × 14 dims)
+const int8Vectors = new Int8Array(total * DIMS);
+for (let i = 0; i < total * DIMS; i++) {
+  int8Vectors[i] = Math.max(-127, Math.min(127, Math.round(vectorBuffer[i]! * 127)));
+}
+
+await write("vectors.bin", Buffer.from(int8Vectors.buffer));
 await write("labels.bin", Buffer.from(labelBuffer.buffer));
-console.log(`Vetores: ${total} elementos convertidos.`);
+console.log(`Vetores: ${total} elementos convertidos (Int8, ${(int8Vectors.byteLength / 1024 / 1024).toFixed(1)} MB).`);
 
 // --- VP-Tree ---
 // Layout de vptree.bin (N × 16 bytes, 4 seções de N × 4 bytes cada):
@@ -63,6 +70,12 @@ while (buildStack.length > 0) {
     if (isLeft) vpLefts[parent] = nodeIdx;
     else vpRights[parent] = nodeIdx;
   }
+
+  // Escolher VP aleatório dentro do intervalo para balancear a árvore
+  const randomOffset = Math.floor(Math.random() * (hi - lo + 1));
+  const temp = workIndices[lo]!;
+  workIndices[lo] = workIndices[lo + randomOffset]!;
+  workIndices[lo + randomOffset] = temp;
 
   const vp = workIndices[lo]!;
   vpIndices[nodeIdx] = vp;

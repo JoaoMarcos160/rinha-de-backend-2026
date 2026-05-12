@@ -1,5 +1,5 @@
 const DIMS = 14;
-const K = 3;
+const K = 5;
 
 async function loadBinary(path: string): Promise<ArrayBuffer> {
   try {
@@ -17,7 +17,8 @@ const [vBuf, lBuf, treeBuf] = await Promise.all([
   loadBinary("vptree.bin"),
 ]);
 
-const referenceVectors = new Float32Array(vBuf);
+// Int8: 4× menos memória que Float32 (42 MB vs 168 MB para 3M vetores)
+const referenceVectors = new Int8Array(vBuf);
 const referenceLabels = new Uint8Array(lBuf);
 export const referenceCount = referenceLabels.length;
 
@@ -40,11 +41,12 @@ const heapLabels = new Uint8Array(K);
 
 // ── Helpers inline ────────────────────────────────────────────────────────
 
+// Dequantiza Int8 → float dividindo por 127 durante o cálculo (sem buffer extra)
 function euclidean(refIdx: number): number {
   let sum = 0;
   const base = refIdx * DIMS;
   for (let j = 0; j < DIMS; j++) {
-    const d = queryVector[j]! - referenceVectors[base + j]!;
+    const d = queryVector[j]! - referenceVectors[base + j]! / 127;
     sum += d * d;
   }
   return Math.sqrt(sum);

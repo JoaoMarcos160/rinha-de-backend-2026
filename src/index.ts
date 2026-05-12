@@ -1,7 +1,7 @@
+import mccRiskData from "./files/mcc_risk.json";
+import normalizationData from "./files/normalization.json";
 import type { FraudScoreResponse, TransactionPayload } from "./types";
 import { knnFraudScore, queryVector, referenceCount } from "./vector";
-import normalizationData from "./files/normalization.json";
-import mccRiskData from "./files/mcc_risk.json";
 
 const N = normalizationData;
 const MCC_RISK = mccRiskData as Record<string, number>;
@@ -20,7 +20,9 @@ function vectorizeToBuffer(q: Float32Array, p: TransactionPayload): void {
   let kmFromLast = -1;
   if (p.last_transaction) {
     minutesSinceLast = clamp(
-      (requestedAtMs - Date.parse(p.last_transaction.timestamp)) / 60_000 / N.max_minutes,
+      (requestedAtMs - Date.parse(p.last_transaction.timestamp)) /
+        60_000 /
+        N.max_minutes,
     );
     kmFromLast = clamp(p.last_transaction.km_from_current / N.max_km);
   }
@@ -31,7 +33,10 @@ function vectorizeToBuffer(q: Float32Array, p: TransactionPayload): void {
   let unknownMerchant = 1;
   const merchants = p.customer.known_merchants;
   for (let i = 0; i < merchants.length; i++) {
-    if (merchants[i] === p.merchant.id) { unknownMerchant = 0; break; }
+    if (merchants[i] === p.merchant.id) {
+      unknownMerchant = 0;
+      break;
+    }
   }
 
   q[0] = clamp(p.transaction.amount / N.max_amount);
@@ -58,7 +63,9 @@ const server = Bun.serve({
   reusePort: true,
   routes: {
     "/ready": () =>
-      isReady ? new Response("OK") : new Response("Initializing", { status: 503 }),
+      isReady
+        ? new Response("OK")
+        : new Response("Initializing", { status: 503 }),
 
     "/fraud-score": {
       POST: async (req) => {
