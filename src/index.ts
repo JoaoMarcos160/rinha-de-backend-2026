@@ -1,3 +1,4 @@
+import { unlinkSync } from "node:fs";
 import mccRiskData from "./files/mcc_risk.json";
 import normalizationData from "./files/normalization.json";
 import type { FraudScoreResponse, TransactionPayload } from "./types";
@@ -61,9 +62,15 @@ console.log(`✅ VP-Tree pronto — ${referenceCount} vetores de referência.`);
 const RESPONSE_OK = new Response("OK", { status: 200 });
 const RESPONSE_INITIALIZING = new Response("Initializing", { status: 503 });
 
+const socketPath = process.env.SOCKET_PATH!;
+
+process.umask(0o000);
+try {
+  unlinkSync(socketPath);
+} catch {}
+
 const server = Bun.serve({
-  port: Number(process.env.PORT ?? 3000),
-  reusePort: true,
+  unix: socketPath,
   routes: {
     "/ready": () => (isReady ? RESPONSE_OK : RESPONSE_INITIALIZING),
 

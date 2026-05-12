@@ -27,7 +27,9 @@ COPY ./src/files/normalization.json ./files/normalization.json
 # Opcional: Definir o limite de memória para o runtime do Bun
 ENV BUN_RUNTIME_OPTS="--max-old-space-size=96"
 
-USER bun
+LABEL maintainer="João Marcos <joaomarcostomaz70@gmail.com>"
+LABEL description="API de Risco de Fraude para a Rinha de Backend 2026"
+
 EXPOSE 3000
 
 CMD ["bun", "run", "index.ts"]

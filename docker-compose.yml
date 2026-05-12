@@ -1,5 +1,8 @@
 version: "3.9"
 
+volumes:
+  sockets:
+
 services:
   lb:
     image: haproxy:lts-alpine
@@ -11,11 +14,18 @@ services:
 
     volumes:
       - ./haproxy.cfg:/usr/local/etc/haproxy/haproxy.cfg:ro
+      - sockets:/sockets:ro
 
     depends_on:
       - api1
       - api2
     restart: unless-stopped
+    security_opt:
+      - seccomp:unconfined
+    ulimits:
+      nofile:
+        soft: 65535
+        hard: 65535
 
   api1:
     build: .
@@ -25,8 +35,16 @@ services:
     mem_limit: "155m"
 
     environment:
-      PORT: 3000
+      SOCKET_PATH: /sockets/api1.sock
+    volumes:
+      - sockets:/sockets
     restart: unless-stopped
+    security_opt:
+      - seccomp:unconfined
+    ulimits:
+      nofile:
+        soft: 65535
+        hard: 65535
 
   api2:
     build: .
@@ -36,5 +54,13 @@ services:
     mem_limit: "155m"
 
     environment:
-      PORT: 3000
+      SOCKET_PATH: /sockets/api2.sock
+    volumes:
+      - sockets:/sockets
     restart: unless-stopped
+    security_opt:
+      - seccomp:unconfined
+    ulimits:
+        nofile:
+          soft: 65535
+          hard: 65535
