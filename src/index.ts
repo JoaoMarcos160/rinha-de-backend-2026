@@ -58,14 +58,14 @@ function vectorizeToBuffer(q: Float32Array, p: TransactionPayload): void {
 const isReady = referenceCount > 0;
 console.log(`✅ VP-Tree pronto — ${referenceCount} vetores de referência.`);
 
+const RESPONSE_OK = new Response("OK", { status: 200 });
+const RESPONSE_INITIALIZING = new Response("Initializing", { status: 503 });
+
 const server = Bun.serve({
   port: Number(process.env.PORT ?? 3000),
   reusePort: true,
   routes: {
-    "/ready": () =>
-      isReady
-        ? new Response("OK")
-        : new Response("Initializing", { status: 503 }),
+    "/ready": () => (isReady ? RESPONSE_OK : RESPONSE_INITIALIZING),
 
     "/fraud-score": {
       POST: async (req) => {

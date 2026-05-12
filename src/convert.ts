@@ -19,12 +19,21 @@ for (let i = 0; i < total; i++) {
 // Reduz vectors.bin de 160 MB para 42 MB (3M vetores × 14 dims)
 const int8Vectors = new Int8Array(total * DIMS);
 for (let i = 0; i < total * DIMS; i++) {
-  int8Vectors[i] = Math.max(-127, Math.min(127, Math.round(vectorBuffer[i]! * 127)));
+  int8Vectors[i] = Math.max(
+    -127,
+    Math.min(127, Math.round(vectorBuffer[i]! * 127)),
+  );
 }
 
 await write("vectors.bin", Buffer.from(int8Vectors.buffer));
 await write("labels.bin", Buffer.from(labelBuffer.buffer));
-console.log(`Vetores: ${total} elementos convertidos (Int8, ${(int8Vectors.byteLength / 1024 / 1024).toFixed(1)} MB).`);
+console.log(
+  `Vetores: ${total} elementos convertidos (Int8, ${(
+    int8Vectors.byteLength /
+    1024 /
+    1024
+  ).toFixed(1)} MB).`,
+);
 
 // --- VP-Tree ---
 // Layout de vptree.bin (N × 16 bytes, 4 seções de N × 4 bytes cada):
@@ -57,7 +66,9 @@ for (let i = 0; i < total; i++) workIndices[i] = i;
 
 // Build iterativo com stack explícita (evita estouro de pilha de recursão para N grande)
 type Frame = { lo: number; hi: number; parent: number; isLeft: boolean };
-const buildStack: Frame[] = [{ lo: 0, hi: total - 1, parent: -1, isLeft: true }];
+const buildStack: Frame[] = [
+  { lo: 0, hi: total - 1, parent: -1, isLeft: true },
+];
 
 while (buildStack.length > 0) {
   const frame = buildStack.pop()!;
@@ -128,4 +139,63 @@ new Int32Array(treeBuf, total * 8, total).set(vpLefts);
 new Int32Array(treeBuf, total * 12, total).set(vpRights);
 
 await write("vptree.bin", Buffer.from(treeBuf));
-console.log(`VP-Tree: ${nodeCount} nós serializados (${(total * 16 / 1024).toFixed(1)} KB).`);
+console.log(
+  `VP-Tree: ${nodeCount} nós serializados (${((total * 16) / 1024).toFixed(
+    1,
+  )} KB).`,
+);
+
+const PRINT_DEPTH = 5; // profundidade máxima para printar
+
+function printNode(
+  nodeIdx: number,
+  depth: number = 0,
+  prefix: string = "",
+  connType: "root" | "mid" | "last" = "root",
+): void {
+  if (nodeIdx < 0) return;
+  const G = "\x1b[90m",
+    Y = "\x1b[33m",
+    C = "\x1b[36m",
+    GR = "\x1b[32m",
+    B = "\x1b[1m",
+    R = "\x1b[0m",
+    RED = "\x1b[31m";
+
+  const vp = vpIndices[nodeIdx]!;
+  const mu = vpMus[nodeIdx]!;
+  const left = vpLefts[nodeIdx]!;
+  const right = vpRights[nodeIdx]!;
+  const isLeaf = left < 0 && right < 0;
+
+  const connector =
+    connType === "root"
+      ? ""
+      : connType === "last"
+      ? `${G}└── ${R}`
+      : `${G}├── ${R}`;
+  const bullet = isLeaf ? `${GR}●${R}` : `${C}◆${R}`;
+  const vpLabel = labelBuffer[vp] === 0 ? `${GR}legit${R}` : `${RED}fraud${R}`;
+  console.log(
+    `${prefix}${connector}${bullet} ${B}#${nodeIdx}${R}  ${G}vp${R}=${vp}(${vpLabel})  ${Y}μ=${mu.toFixed(
+      4,
+    )}${R}`,
+  );
+
+  const childPrefix =
+    prefix +
+    (connType === "root" ? "" : connType === "last" ? "    " : `${G}│${R}   `);
+
+  if (depth >= PRINT_DEPTH) {
+    if (left >= 0 || right >= 0) console.log(`${childPrefix}${G}└── …${R}`);
+    return;
+  }
+
+  if (left >= 0)
+    printNode(left, depth + 1, childPrefix, right >= 0 ? "mid" : "last");
+  if (right >= 0) printNode(right, depth + 1, childPrefix, "last");
+}
+
+console.log(`\n\x1b[1mVP-Tree\x1b[0m  \x1b[90m(${nodeCount} nodes)\x1b[0m\n`);
+
+printNode(0);
