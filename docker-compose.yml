@@ -16,9 +16,15 @@ services:
       - api1
       - api2
     restart: unless-stopped
+    security_opt:
+      - seccomp:unconfined
+    ulimits:
+      nofile:
+        soft: 65535
+        hard: 65535
 
   api1:
-    build: .
+    image: ghcr.io/joaomarcos160/rinha-de-backend-2026:latest
     hostname: api1
 
     cpus: "0.4"
@@ -27,9 +33,15 @@ services:
     environment:
       PORT: 3000
     restart: unless-stopped
+    security_opt:
+      - seccomp:unconfined
+    ulimits:
+      nofile:
+        soft: 65535
+        hard: 65535
 
   api2:
-    build: .
+    image: ghcr.io/joaomarcos160/rinha-de-backend-2026:latest
     hostname: api2
 
     cpus: "0.4"
@@ -38,3 +50,9 @@ services:
     environment:
       PORT: 3000
     restart: unless-stopped
+    security_opt:
+      - seccomp:unconfined
+    ulimits:
+      nofile:
+        soft: 65535
+        hard: 65535
