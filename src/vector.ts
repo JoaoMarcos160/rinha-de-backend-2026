@@ -1,5 +1,7 @@
 const DIMS = 14;
 const K = 5;
+const INV127 = 1 / 127;
+const SCALE_SQ = 127 * 127; // 16129 — usado para converter tauSq para espaço escalado
 
 async function loadBinary(path: string): Promise<ArrayBuffer> {
   try {
@@ -30,6 +32,7 @@ const vpRights = new Int32Array(treeBuf, referenceCount * 12, referenceCount);
 
 // ── Buffers reutilizáveis por requisição (seguro: Bun é single-threaded) ──
 export const queryVector = new Float32Array(DIMS); // escrito pelo index.ts
+const queryVectorScaled = new Float32Array(DIMS);  // queryVector × 127, pré-calculado por query
 
 // Stack de traversal do VP-Tree: profundidade máxima ≈ 2 × log₂(N)
 // Para N = 1M: ≈ 40; reservamos 1024 para folga.
@@ -41,15 +44,16 @@ const heapLabels = new Uint8Array(K);
 
 // ── Helpers inline ────────────────────────────────────────────────────────
 
-// Dequantiza Int8 → float dividindo por 127 durante o cálculo (sem buffer extra)
-function euclidean(refIdx: number): number {
+// Retorna distância quadrática no espaço escalado: Σ(q×127 - ref)²
+// Distância real = sqrt(resultado) × INV127  (evita 14 divisões por chamada)
+function euclideanSq(refIdx: number): number {
   let sum = 0;
   const base = refIdx * DIMS;
   for (let j = 0; j < DIMS; j++) {
-    const d = queryVector[j]! - referenceVectors[base + j]! / 127;
+    const d = queryVectorScaled[j]! - referenceVectors[base + j]!;
     sum += d * d;
   }
-  return Math.sqrt(sum);
+  return sum;
 }
 
 // Insere no max-heap de tamanho K. Retorna o novo tau (máximo atual).
@@ -57,25 +61,22 @@ function heapInsert(dist: number, label: number, heapSize: number): number {
   if (heapSize < K) {
     heapDists[heapSize] = dist;
     heapLabels[heapSize] = label;
-    return dist; // tau temporário (não vale buscar pelo max ainda)
+    // Retorna o max real até agora (fix: antes retornava dist, causando tau incorreto)
+    let mx = heapDists[0]!;
+    for (let i = 1; i <= heapSize; i++) if (heapDists[i]! > mx) mx = heapDists[i]!;
+    return mx;
   }
-  // Heap já cheio: encontrar o pior slot
+  // Heap cheio: encontrar o pior slot em scan único
   let maxDist = heapDists[0]!;
   let maxIdx = 0;
   for (let i = 1; i < K; i++) {
-    if (heapDists[i]! > maxDist) {
-      maxDist = heapDists[i]!;
-      maxIdx = i;
-    }
+    if (heapDists[i]! > maxDist) { maxDist = heapDists[i]!; maxIdx = i; }
   }
   if (dist < maxDist) {
     heapDists[maxIdx] = dist;
     heapLabels[maxIdx] = label;
-    // Recalcular novo tau
-    let newMax = heapDists[0]!;
-    for (let i = 1; i < K; i++) {
-      if (heapDists[i]! > newMax) newMax = heapDists[i]!;
-    }
+    let newMax = 0;
+    for (let i = 0; i < K; i++) if (heapDists[i]! > newMax) newMax = heapDists[i]!;
     return newMax;
   }
   return maxDist;
@@ -84,44 +85,49 @@ function heapInsert(dist: number, label: number, heapSize: number): number {
 // ── k-NN via VP-Tree ──────────────────────────────────────────────────────
 
 export function knnFraudScore(): number {
-  // Resetar heap
   heapDists.fill(Infinity);
+
+  // Pré-escala a query uma vez: elimina 14 divisões float por chamada a euclideanSq
+  for (let j = 0; j < DIMS; j++) queryVectorScaled[j] = queryVector[j]! * 127;
 
   let stackTop = 0;
   let heapSize = 0;
   let tau = Infinity;
+  let tauSq = Infinity; // tau² × 127² — compara diretamente com saída de euclideanSq
 
   searchStack[stackTop++] = 0; // começa pela raiz (nodeIdx = 0)
 
   while (stackTop > 0) {
     const nodeIdx = searchStack[--stackTop]!;
     const refIdx = vpIndices[nodeIdx]!;
+    const left = vpLefts[nodeIdx]!;
+    const right = vpRights[nodeIdx]!;
 
-    const d = euclidean(refIdx);
+    const dSq = euclideanSq(refIdx);
+
+    // Nós folha que não melhoram o heap: pula sqrt completamente
+    if (left < 0 && right < 0 && dSq >= tauSq && heapSize >= K) continue;
+
+    const d = Math.sqrt(dSq) * INV127; // distância real (multiplicação > divisão)
 
     if (d < tau || heapSize < K) {
       tau = heapInsert(d, referenceLabels[refIdx]!, heapSize);
       if (heapSize < K) heapSize++;
+      tauSq = tau * tau * SCALE_SQ;
     }
 
-    const mu = vpMus[nodeIdx]!;
-    const left = vpLefts[nodeIdx]!;
-    const right = vpRights[nodeIdx]!;
+    if (left >= 0 || right >= 0) {
+      const mu = vpMus[nodeIdx]!;
+      const enterLeft = left >= 0 && d - tau < mu;
+      const enterRight = right >= 0 && d + tau >= mu;
 
-    // Pruning por desigualdade triangular:
-    // Entrar na esquerda se d - tau < mu  (bola interna pode ter ponto dentro do raio tau)
-    // Entrar na direita  se d + tau >= mu (bola externa pode ter ponto dentro do raio tau)
-    const enterLeft = left >= 0 && d - tau < mu;
-    const enterRight = right >= 0 && d + tau >= mu;
-
-    // Empilhar o ramo menos provável primeiro (processado por último)
-    // se d < mu, esquerda é mais próxima → empilha direita antes, esquerda depois
-    if (d < mu) {
-      if (enterRight) searchStack[stackTop++] = right;
-      if (enterLeft) searchStack[stackTop++] = left;
-    } else {
-      if (enterLeft) searchStack[stackTop++] = left;
-      if (enterRight) searchStack[stackTop++] = right;
+      if (d < mu) {
+        if (enterRight) searchStack[stackTop++] = right;
+        if (enterLeft) searchStack[stackTop++] = left;
+      } else {
+        if (enterLeft) searchStack[stackTop++] = left;
+        if (enterRight) searchStack[stackTop++] = right;
+      }
     }
   }
 

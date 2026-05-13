@@ -145,7 +145,7 @@ console.log(
   )} KB).`,
 );
 
-const PRINT_DEPTH = 5; // profundidade máxima para printar
+const PRINT_DEPTH = 2; // profundidade máxima para printar
 
 function printNode(
   nodeIdx: number,
