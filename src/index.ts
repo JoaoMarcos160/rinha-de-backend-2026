@@ -56,17 +56,19 @@ function vectorizeToBuffer(q: Float32Array, p: TransactionPayload): void {
   q[13] = clamp(p.merchant.avg_amount / N.max_merchant_avg_amount);
 }
 
-const isReady = referenceCount > 0;
 console.log(`✅ VP-Tree pronto — ${referenceCount} vetores de referência.`);
+
+let isReady = false;
 
 const RESPONSE_OK = new Response("OK", { status: 200 });
 const RESPONSE_INITIALIZING = new Response("Initializing", { status: 503 });
 
-const REPORT_EVERY = 500;
+const REPORT_EVERY = 5_000;
 let reqCount = 0;
 let tParse = 0,
   tVectorize = 0,
   tKnn = 0,
+  tJson = 0,
   tTotal = 0;
 
 function reportAndReset() {
@@ -74,14 +76,15 @@ function reportAndReset() {
   console.log(
     `[perf ${n}req] parse=${(tParse / n).toFixed(3)}ms  vectorize=${(
       tVectorize / n
-    ).toFixed(3)}ms  knn=${(tKnn / n).toFixed(3)}ms  total=${(
-      tTotal / n
-    ).toFixed(3)}ms`,
+    ).toFixed(3)}ms  knn=${(tKnn / n).toFixed(3)}ms  json=${(tJson / n).toFixed(
+      3,
+    )}ms  total=${(tTotal / n).toFixed(3)}ms`,
   );
   reqCount = 0;
   tParse = 0;
   tVectorize = 0;
   tKnn = 0;
+  tJson = 0;
   tTotal = 0;
 }
 
@@ -101,23 +104,25 @@ const server = Bun.serve({
       POST: async (req) => {
         try {
           // const t0 = performance.now();
-          const body = (await req.json()) as TransactionPayload;
+          const body = JSON.parse(await req.text()) as TransactionPayload;
           // const t1 = performance.now();
           vectorizeToBuffer(queryVector, body);
           // const t2 = performance.now();
-          const fraudScore = knnFraudScore();
+          const fraud_score = knnFraudScore();
           // const t3 = performance.now();
+          const jsonResponse = Response.json({
+            approved: fraud_score < APPROVAL_THRESHOLD,
+            fraud_score,
+          } satisfies FraudScoreResponse);
+          // const t4 = performance.now();
 
           // tParse += t1 - t0;
           // tVectorize += t2 - t1;
           // tKnn += t3 - t2;
-          // tTotal += t3 - t0;
+          // tJson += t4 - t3;
+          // tTotal += t4 - t0;
           // if (++reqCount >= REPORT_EVERY) reportAndReset();
-
-          return Response.json({
-            approved: fraudScore < APPROVAL_THRESHOLD,
-            fraud_score: fraudScore,
-          } satisfies FraudScoreResponse);
+          return jsonResponse;
         } catch (e) {
           console.error(e);
           return new Response("Invalid Request", { status: 400 });
@@ -131,4 +136,29 @@ const server = Bun.serve({
   },
 });
 
-console.log(`🚀 Server running at ${server.url}`);
+console.log(`🚀 Server running at ${server.url}, starting warm-up`);
+
+const WARMUP_ROUNDS = 20_000;
+const warmupPayload: TransactionPayload = {
+  id: "warmup",
+  transaction: {
+    amount: 100,
+    installments: 1,
+    requested_at: new Date().toISOString(),
+  },
+  customer: { avg_amount: 100, tx_count_24h: 1, known_merchants: [] },
+  merchant: { id: "warmup", mcc: "5411", avg_amount: 100 },
+  terminal: { km_from_home: 0, is_online: false, card_present: true },
+  last_transaction: null,
+};
+
+(async () => {
+  for (let i = 0; i < WARMUP_ROUNDS; i++) {
+    vectorizeToBuffer(queryVector, warmupPayload);
+    knnFraudScore();
+  }
+  isReady = referenceCount > 0;
+  console.log(
+    `🔥 Warm-up concluído (${WARMUP_ROUNDS} iterações) — /ready liberado.`,
+  );
+})();

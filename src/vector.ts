@@ -32,7 +32,7 @@ const vpRights = new Int32Array(treeBuf, referenceCount * 12, referenceCount);
 
 // ── Buffers reutilizáveis por requisição (seguro: Bun é single-threaded) ──
 export const queryVector = new Float32Array(DIMS); // escrito pelo index.ts
-const queryVectorScaled = new Float32Array(DIMS);  // queryVector × 127, pré-calculado por query
+const queryVectorScaled = new Float32Array(DIMS); // queryVector × 127, pré-calculado por query
 
 // Stack de traversal do VP-Tree: profundidade máxima ≈ 2 × log₂(N)
 // Para N = 1M: ≈ 40; reservamos 1024 para folga.
@@ -63,20 +63,25 @@ function heapInsert(dist: number, label: number, heapSize: number): number {
     heapLabels[heapSize] = label;
     // Retorna o max real até agora (fix: antes retornava dist, causando tau incorreto)
     let mx = heapDists[0]!;
-    for (let i = 1; i <= heapSize; i++) if (heapDists[i]! > mx) mx = heapDists[i]!;
+    for (let i = 1; i <= heapSize; i++)
+      if (heapDists[i]! > mx) mx = heapDists[i]!;
     return mx;
   }
   // Heap cheio: encontrar o pior slot em scan único
   let maxDist = heapDists[0]!;
   let maxIdx = 0;
   for (let i = 1; i < K; i++) {
-    if (heapDists[i]! > maxDist) { maxDist = heapDists[i]!; maxIdx = i; }
+    if (heapDists[i]! > maxDist) {
+      maxDist = heapDists[i]!;
+      maxIdx = i;
+    }
   }
   if (dist < maxDist) {
     heapDists[maxIdx] = dist;
     heapLabels[maxIdx] = label;
     let newMax = 0;
-    for (let i = 0; i < K; i++) if (heapDists[i]! > newMax) newMax = heapDists[i]!;
+    for (let i = 0; i < K; i++)
+      if (heapDists[i]! > newMax) newMax = heapDists[i]!;
     return newMax;
   }
   return maxDist;
