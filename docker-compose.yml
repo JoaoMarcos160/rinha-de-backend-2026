@@ -20,8 +20,6 @@ services:
       - api1
       - api2
     restart: unless-stopped
-    security_opt:
-      - seccomp:unconfined
     ulimits:
       nofile:
         soft: 65535
@@ -56,5 +54,3 @@ services:
     volumes:
       - sockets:/sockets
     restart: unless-stopped
-    security_opt:
-      - seccomp:unconfined
