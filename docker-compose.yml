@@ -3,6 +3,14 @@ version: "3.9"
 volumes:
   sockets:
 
+x-api: &api
+  image: ghcr.io/joaomarcos160/rinha-de-backend-2026:sha-ba051d5
+  cpus: "0.45"
+  mem_limit: "160m"
+  volumes:
+    - sockets:/sockets
+  restart: unless-stopped
+
 services:
   lb:
     image: haproxy:lts-alpine
@@ -20,37 +28,15 @@ services:
       - api1
       - api2
     restart: unless-stopped
-    ulimits:
-      nofile:
-        soft: 65535
-        hard: 65535
 
   api1:
-    image: ghcr.io/joaomarcos160/rinha-de-backend-2026:sha-ba051d5
+    <<: *api
     hostname: api1
-
-    cpus: "0.45"
-    mem_limit: "160m"
-
     environment:
       SOCKET_PATH: /sockets/api1.sock
-    volumes:
-      - sockets:/sockets
-    restart: unless-stopped
-    ulimits:
-      nofile:
-        soft: 65535
-        hard: 65535
 
   api2:
-    image: ghcr.io/joaomarcos160/rinha-de-backend-2026:sha-ba051d5
+    <<: *api
     hostname: api2
-
-    cpus: "0.45"
-    mem_limit: "160m"
-
     environment:
       SOCKET_PATH: /sockets/api2.sock
-    volumes:
-      - sockets:/sockets
-    restart: unless-stopped
