@@ -39,8 +39,6 @@ services:
     volumes:
       - sockets:/sockets
     restart: unless-stopped
-    security_opt:
-      - seccomp:unconfined
     ulimits:
       nofile:
         soft: 65535
@@ -60,7 +58,3 @@ services:
     restart: unless-stopped
     security_opt:
       - seccomp:unconfined
-    ulimits:
-      nofile:
-        soft: 65535
-        hard: 65535
