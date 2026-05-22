@@ -138,7 +138,7 @@ const server = Bun.serve({
 
 console.log(`🚀 Server running at ${server.url}, starting warm-up`);
 
-const WARMUP_ROUNDS = 20_000;
+const WARMUP_ROUNDS = 1;
 const warmupPayload: TransactionPayload = {
   id: "warmup",
   transaction: {
